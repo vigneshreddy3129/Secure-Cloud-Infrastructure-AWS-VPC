@@ -1,111 +1,187 @@
 # Secure Cloud Infrastructure Deployment Using AWS VPC
 
 ## 📌 Project Overview
-This project demonstrates the design and deployment of a secure 3-tier cloud infrastructure using **AWS Virtual Private Cloud (VPC)**. The infrastructure is built across multiple Availability Zones to host application servers, database layer (MongoDB), and a public access layer with controlled and hardened security.
+This project demonstrates the design and deployment of a secure 3-tier cloud infrastructure using **AWS Virtual Private Cloud (VPC)**.  
+The environment hosts public access layer, application servers, and MongoDB database in isolated private subnets with controlled internet access via NAT Gateway.
 
-## 🎯 Objective
-- Create an isolated private network in AWS using VPC  
-- Separate resources into Public, Application, and Database subnets  
-- Provide internet access using Internet Gateway and NAT Gateway  
-- Implement security using Security Groups and Network ACL  
-- Deploy and test EC2 instances and MongoDB communication securely.
+## 🎯 Objectives
+- Create a custom AWS VPC with private IP range
+- Deploy infrastructure across multiple Availability Zones
+- Configure Internet Gateway for public traffic
+- Enable outbound internet for private servers using NAT Gateway
+- Implement security using Security Groups and Network ACLs
+- Launch EC2 instances for App and MongoDB with bastion host
+- Validate secure communication on port **27017** internally
 
 ---
 
 ## 🏗 Architecture Design
 
 ### CIDR Planning
-- **VPC CIDR:** `10.0.0.0/16`  
-- **Public Subnet (Web/Bastion):** `10.0.1.0/24` → ap-south-1a  
-- **Private App Subnet:** `10.0.2.0/24` → ap-south-1a  
-- **Private DB Subnet (MongoDB):** `10.0.3.0/24` → ap-south-1b  
+- **VPC CIDR:** `192.168.0.0/16`
+- Public Subnet: `192.168.1.0/24` – AZ ap-south-1a  
+- Private App Subnet: `192.168.2.0/24` – AZ ap-south-1a  
+- Private DB Subnet: `192.168.3.0/24` – AZ ap-south-1b
 
-### Components Used
-- VPC  
-- Subnets in different AZs  
-- Internet Gateway (IGW)  
-- NAT Gateway with Elastic IP  
-- Route Tables  
+### Components
+- VPC (Mumbai region – ap-south-1)
+- Subnets (Public + Private)
+- Internet Gateway (IGW)
+- NAT Gateway with Elastic IP
+- Public and Private Route Tables
+- Security Groups
+- Network ACLs
+- EC2 Instances with EBS
+- MongoDB Database
+
+### Traffic Flow
+User → Internet Gateway → Public Subnet (Bastion/Web) →  
+Private Subnet (App) → Private Subnet (MongoDB on 27017)
+
+---
+
+## 🛠 Prerequisites
+
+### Tools Required
+- AWS Account
+- GitHub Account
+- SSH Client (Putty/OpenSSH)
+- AWS Console access
+- Basic Networking Knowledge
+
+### AWS Services Used
+- Amazon VPC  
+- EC2 + EBS  
+- IGW  
+- NAT Gateway  
 - Security Groups  
-- Network ACL (NACL)  
-- EC2 Instances  
-- EBS Storage  
-- MongoDB on port **27017**
+- NACL  
+- Route Tables
 
 ---
 
-## ⚙ Implementation Steps
+## 🚀 Implementation Steps
 
-1. Selected AWS Region → **ap-south-1 (Mumbai)**  
-2. Created VPC with CIDR `10.0.0.0/16`  
-3. Designed public and private subnets across AZs  
-4. Attached **Internet Gateway** for public traffic  
-5. Configured **Route Tables**  
-   - Public RT → `0.0.0.0/0 → IGW`  
-   - Private RT → `0.0.0.0/0 → NAT`
-6. Created **NAT Gateway** in public subnet for outbound internet of private servers  
-7. Implemented Security Groups  
-   - Bastion SG → SSH 22 from my IP  
-   - App SG → SSH from Bastion SG  
-   - DB SG → MongoDB 27017 from App SG only  
-8. Configured **Network ACL** at subnet level  
-9. Launched EC2 instances in respective subnets  
-10. Tested end-to-end connectivity.
+### 1. Create VPC
+- Login AWS Console  
+- Select **ap-south-1 (Mumbai)**  
+- Create VPC with:
+  - Name: `secure-prod-vpc`
+  - CIDR: `192.168.0.0/16`
+  - Tenancy: default
 
 ---
 
-## 🔐 Security Implementation
-
-### Security Groups
-- Restricted SSH access to Bastion host only  
-- MongoDB layer is not accessible from internet  
-- Internal communication allowed only from Application subnet on **27017**
-
-### Network ACL
-- Public subnet → allow 22, 80 outbound all  
-- Private DB subnet → block all internet inbound, allow only internal MongoDB traffic.
+### 2. Create Subnets
+- Public subnet with auto-assign public IP enabled  
+- App and DB subnets with auto-assign disabled  
+- Spread across 2 Availability Zones
 
 ---
 
-## 🧪 Testing & Validation
-
-| Test Case | Result |
-|------|--------|
-| SSH to Bastion from Internet | ✔ Allowed |
-| Bastion → App SSH | ✔ Allowed |
-| App → MongoDB 27017 | ✔ Allowed |
-| Direct Internet → DB | ✖ Blocked |
-| Private subnet outbound via NAT | ✔ Allowed |
-
-The tests confirm that the database layer is fully protected and reachable only through the application tier.
+### 3. Internet Gateway
+- Create IGW named `secure-igw`
+- Attach to `secure-prod-vpc`
 
 ---
 
-## 📁 Working Directories
+### 4. Route Tables
 
-- Application path: `/opt/app`  
-- EC2 storage: default **EBS volumes**  
-- Deployment tier segregation using Route Table associations.
+#### Public Route Table
+- Name: `public-rt`
+- Add route:  
+  - Destination `0.0.0.0/0`
+  - Target → Internet Gateway
+- Associate → Public Subnet
+
+#### Private Route Table
+- Name: `private-rt`
+- Add route later → NAT Gateway
+- Associate → App + DB subnets
 
 ---
 
-## 🚀 Outcome
+### 5. NAT Gateway
+- Create NAT Gateway in Public Subnet  
+- Allocate Elastic IP  
+- Update Private RT:
+  - `0.0.0.0/0 → NAT Gateway`
 
-- Built a secure and isolated AWS network  
-- Reduced public exposure of database  
-- Implemented enterprise-style subnet and firewall design  
-- Enabled reliable hosting for future CI/CD and IaC automation.
+---
+
+### 6. Security Groups
+
+#### Bastion SG
+- Allow SSH 22 from My IP
+
+#### App SG
+- Allow SSH from Bastion SG  
+- Allow outbound all
+
+#### MongoDB SG
+- Allow **27017 only from App SG / App Subnet**  
+- Deny all public access
+
+---
+
+### 7. Network ACL
+
+#### Public NACL
+- Inbound: 22, 80  
+- Outbound: all
+
+#### Private NACL
+- Inbound: 27017 internal only  
+- Block `0.0.0.0/0` inbound
+
+---
+
+### 8. Launch EC2
+
+- Bastion host → public subnet  
+- Application server → private app subnet  
+- MongoDB server → private DB subnet  
+- Working directories:
+  - `/opt/app`
+  - MongoDB data `/var/lib/mongo`
+
+---
+
+## ✅ Testing & Validation
+
+### Test Cases
+1. SSH to Bastion → ✔ Success  
+2. Bastion → App SSH → ✔  
+3. App → MongoDB 27017 → ✔  
+4. Direct Internet → MongoDB → ❌ Blocked  
+5. Private instance internet via NAT → ✔
+
+---
+
+## 📈 Outcomes
+- Successfully designed AWS VPC using **192.168.0.0/16** private range  
+- MongoDB exposed only internally on port 27017  
+- Bastion host used for secure administration  
+- Controlled routing between public and private tiers  
+- Console-documented infrastructure suitable for interviews
 
 ---
 
 ## 🔮 Future Enhancements
-
-- Terraform IaC scripts for VPC automation  
-- Jenkins pipeline to deploy EC2 inside this VPC  
+- Terraform IaC implementation  
+- Jenkins pipeline to launch EC2 inside this VPC  
 - MongoDB replication in private subnet  
-- Monitoring using ELK stack.
+- Monitoring using CloudWatch / ELK
 
 ---
 
-## 🤝 Author
-**Vignesh**
+## 📁 Repository Contents
+- Step by step guides  
+- Architecture diagram  
+- Screenshots from AWS console  
+- Security configuration documents
+
+---
+
+### Author
+**Vignesh**  
